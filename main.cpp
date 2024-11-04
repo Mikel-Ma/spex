@@ -45,6 +45,41 @@ std::pair<uint64_t, std::complex<double>> apply_Pk(const std::string& pauli_stri
     return {new_basis_state, phase};
 }
 
+// Function for calculating the inner product of two quantum states
+std::complex<double> inner_product(const State& psi, const State& phi) {
+    std::complex<double> result = 0.0;
+
+    // Pointers to avoid copying states
+    const State* smaller_state;
+    const State* larger_state;
+
+    // Determine which state is smaller
+    if (psi.size() < phi.size()) {
+        smaller_state = &psi;
+        larger_state = &phi;
+    } else {
+        smaller_state = &phi;
+        larger_state = &psi;
+    }
+
+    // Iterate over the basis states and coefficients of the smaller state
+    for (const auto& [basis_state, coeff_smaller] : *smaller_state) {
+        // Try to find the matching basis state in the larger state
+        auto it = larger_state->find(basis_state);
+        if (it != larger_state->end()) {
+            std::complex<double> coeff_larger = it->second;
+            if (smaller_state == &phi) {
+                result += std::conj(coeff_smaller) * coeff_larger;
+            } else {
+                result += std::conj(coeff_larger) * coeff_smaller;
+            }
+        }
+    }
+
+    return result;
+}
+
+
 int main() {
     // liste von tupeln
     std::vector<std::string> pauli_strings = {"XYZ", "XZI"};
@@ -99,6 +134,22 @@ int main() {
         }
         std::cout << "⟩: " << coeff << std::endl;
     }
+
+
+    // Testing inner_product
+    State phi;
+
+    // Initialize psi and phi with basis states and coefficients
+    psi[0b00] = std::complex<double>(1.0, 0.0); // |00⟩
+    psi[0b11] = std::complex<double>(0.0, 1.0); // |11⟩
+
+    phi[0b00] = std::complex<double>(0.5, 0.5); // |00⟩
+    phi[0b01] = std::complex<double>(-0.5, 0.5); // |01⟩
+
+    // Calculate the inner product
+    std::complex<double> result = inner_product(psi, phi);
+
+    std::cout << "Inner product ⟨φ|ψ⟩ = " << result << std::endl;
 
     return 0;
 }
