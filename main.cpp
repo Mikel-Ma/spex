@@ -81,20 +81,22 @@ std::complex<double> inner_product(const State& psi, const State& phi) {
 
 
 int main() {
-    // liste von tupeln
-    std::vector<std::string> pauli_strings = {"XYZ", "XZI"};
-    std::vector<double> thetas = {1.5708, 3.1416};
+    // List of tuples (Pauli-string, theta)
+    std::vector<std::pair<std::string, double>> input = {
+        {"XYZ", 1.5708},
+        {"XZI", 3.1416}
+    };
 
-    size_t num_sequences = pauli_strings.size();
+    size_t num_sequences = input.size();
     if (num_sequences == 0) {
         std::cerr << "No pauli-strings entered." << std::endl;
         return 1;
     }
 
     // Check, if pauli-strings have the same length
-    size_t num_qubits = pauli_strings[0].length();
+    size_t num_qubits = input[0].first.length();
     for (size_t i = 1; i < num_sequences; ++i) {
-        if (pauli_strings[i].length() != num_qubits) {
+        if (input[i].first.length() != num_qubits) {
             std::cerr << "Pauli-strings have to be the same length. May use identity operator 'I'." << std::endl;
             return 1;
         }
@@ -106,8 +108,8 @@ int main() {
 
     // Applying the gate sequences
     for (size_t seq = 0; seq < num_sequences; ++seq) {
-        const std::string& pauli_string = pauli_strings[seq];
-        double theta = thetas[seq];
+        const std::string& pauli_string = input[seq].first;
+        double theta = input[seq].second;
 
         State new_psi;
         double cos_theta = std::cos(theta / 2.0);
