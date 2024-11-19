@@ -67,6 +67,8 @@ std::complex<double> inner_product(const State& psi, const State& phi) {
         // Try to find the matching basis state in the larger state
         auto it = larger_state->find(basis_state);
         if (it != larger_state->end()) {
+            // it exists in smaller and larger state
+            // Extract coefficient(second) from larger state
             std::complex<double> coeff_larger = it->second;
             if (smaller_state == &phi) {
                 result += std::conj(coeff_smaller) * coeff_larger;
@@ -83,8 +85,8 @@ std::complex<double> inner_product(const State& psi, const State& phi) {
 int main() {
     // List of tuples (Pauli-string, theta)
     std::vector<std::pair<std::string, double>> input = {
-        {"XYZ", 1.5708},
-        {"XZI", 3.1416}
+        {"ZYXZYX", 1.5708},
+        {"XYZXYZ", 3.1416}
     };
 
     size_t num_sequences = input.size();
@@ -154,4 +156,8 @@ int main() {
     std::cout << "Inner product ⟨φ|ψ⟩ = " << result << std::endl;
 
     return 0;
+
+    // c++ template<>
+
+    // pybind11
 }
