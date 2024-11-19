@@ -81,6 +81,24 @@ std::complex<double> inner_product(const State& psi, const State& phi) {
     return result;
 }
 
+// Function to calculate ⟨φ|H|ψ⟩
+std::complex<double> expectation_value(const State& phi, const State& psi, const std::vector<std::pair<std::string, double>>& H_terms) {
+    std::complex<double> result = 0.0;
+    for (const auto& [pauli_string, coeff] : H_terms) {
+        // Apply Pk to psi to get ψk
+        State psi_k;
+        for (const auto& [basis_state, amplitude] : psi) {
+            auto [new_basis_state, phase] = apply_Pk(pauli_string, basis_state);
+            psi_k[new_basis_state] += phase * amplitude;
+        }
+        // Compute ⟨φ|ψk⟩
+        std::complex<double> inner_prod = inner_product(phi, psi_k);
+        // Accumulate c_k * ⟨φ|ψk⟩
+        result += coeff * inner_prod;
+    }
+    return result;
+}
+
 
 int main() {
     // List of tuples (Pauli-string, theta)
