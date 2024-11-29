@@ -375,7 +375,7 @@ std::string state_to_string(const State& state, int num_qubits) {
 }
 
 // Bindings for Pybind11
-PYBIND11_MODULE(spex, p) {
+PYBIND11_MODULE(spex_tequila, p) {
     p.doc() = "Expectation value computation module on sparse pauli states for tequila, implemented in C++ using Pybind11";
 
     // Expose ExpPauliTerm structure

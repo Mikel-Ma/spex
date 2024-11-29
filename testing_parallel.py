@@ -1,5 +1,5 @@
 import tequila as tq
-import spex
+import spex_tequila as spex
 import numpy as np
 import time
 

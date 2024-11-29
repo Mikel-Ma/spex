@@ -1,4 +1,4 @@
-import spex
+import spex_tequila as spex
 import math
 
 def main():
