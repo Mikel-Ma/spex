@@ -1,51 +1,72 @@
-# Prerequisites
-*.d
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
 
-# Compiled Object files
-*.slo
-*.lo
+# created by testing_parallel.py
+*.hdf5
+
+# C extensions
+*.pyd
+
+# Build directories
+build/
+dist/
+*.egg-info/
+spex.egg-info/
+
+# Pybind11 build artifacts
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
 *.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
+*.exp
 *.lib
 
-# Executables
-*.exe
-*.out
-*.app
+# Temporary files
+*.tmp
+*.log
+
+# MacOS
+.DS_Store
+
+# Visual Studio Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Logs
+*.log
+
+# Unit test / coverage reports
+htmlcov/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+
+# Virtual environment
+venv/
+env/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Distribution / packaging
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# PyInstaller
+*.manifest
+*.spec
 
 # CMake
-CMakeLists.txt.user
+CMakeFiles/
 CMakeCache.txt
-CMakeFiles
-CMakeScripts
-Testing
-Makefile
 cmake_install.cmake
-install_manifest.txt
-compile_commands.json
-CTestTestfile.cmake
-_deps
-CMakeUserPresets.json
+Makefile
 
-# General
-.DS_Store
-.AppleDouble
-.LSOverride
+# Generated files
+*.cmake
