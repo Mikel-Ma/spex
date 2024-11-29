@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *.so
 
+.pypirc
+
 # created by testing_parallel.py
 *.hdf5
 
