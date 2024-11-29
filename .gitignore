@@ -50,6 +50,7 @@ coverage.xml
 # Virtual environment
 venv/
 env/
+spex_env/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
