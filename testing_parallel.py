@@ -1,6 +1,5 @@
 import tequila as tq
 import spex_tequila as spex
-import numpy as np
 import time
 
 def term_to_string(term):

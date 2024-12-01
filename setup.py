@@ -11,7 +11,7 @@ ext_modules = [
 
 setup(
     name="spex-tequila",
-    version="0.0.5",
+    version="0.0.7",
     author="Michael Lang",
     author_email="lang-michi@t-online.de",
     url="https://git.rz.uni-augsburg.de/qalg-a/spex",
@@ -24,7 +24,7 @@ setup(
     python_requires=">=3.6",
     install_requires=[
         "pybind11>=2.5.0",
-        "tequila",
+        "tequila-basic",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
