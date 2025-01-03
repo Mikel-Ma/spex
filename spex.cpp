@@ -194,7 +194,7 @@ std::complex<double> expectation_value_parallel(
         State psi_k;
 
         for (size_t idx = start_idx; idx < end_idx; ++idx) {
-            const auto& [pauli_string, coeff] = H_terms[idx];
+            const auto& [term, coeff] = H_terms[idx];
             if (coeff == 0.0) {
                 continue; // Skip zero coefficients
             }
@@ -340,7 +340,7 @@ PYBIND11_MODULE(spex_tequila, p) {
     py::class_<ExpPauliTerm>(p, "ExpPauliTerm")
         .def(py::init<>())
         .def_readwrite("pauli_map", &ExpPauliTerm::pauli_map)
-        .def_readwrite("angle", &ExpPauliTerm::angle);
+        .def_readwrite("angle", &ExpPauliTerm::angle)
         .def("set_angle", &ExpPauliTerm::set_angle,
              "Set the angle of this ExpPauliTerm");
 
@@ -364,18 +364,12 @@ PYBIND11_MODULE(spex_tequila, p) {
           "Compute the expectation value ⟨φ|H|ψ⟩ (parallelized)",
           py::arg("phi"), py::arg("psi"), py::arg("H_terms"), py::arg("num_threads") = -1,
           py::call_guard<py::gil_scoped_release>()
-          R"doc(
-            Compute the expectation value <phi|H|psi> in parallel if num_threads>0.
-            - num_threads < 0 => uses hardware concurrency
-            - num_threads == 0/1 => calls the non-parallel version
-            - num_threads > 1 => uses that many threads
-            )doc"
     );
 
     // Expose apply_exp_pauli function
     p.def("apply_exp_pauli", &apply_exp_pauli,
           "Apply e^{-iθP} to a quantum state",
-          py::arg("pauli_string"), py::arg("theta"), py::arg("state"));
+          py::arg("term"), py::arg("state"));
 
     // Expose apply_U function
     p.def("apply_U", &apply_U,
