@@ -116,7 +116,7 @@ std::complex<double> inner_product(const State& psi, const State& phi) {
  */
 std::complex<double> expectation_value(
     const State& phi, const State& psi,
-    const std::vector<std::pair<ExpPauliTerm, double>>& H_terms) {
+    const std::vector<std::pair<ExpPauliTerm, std::complex<double>>>& H_terms) {
     if (psi.empty() || phi.empty()) {
         throw std::invalid_argument("Quantum states cannot be empty.");
     }
@@ -160,7 +160,7 @@ std::complex<double> expectation_value(
  */
 std::complex<double> expectation_value_parallel(
     const State& phi, const State& psi,
-    const std::vector<std::pair<ExpPauliTerm, double>>& H_terms,
+    const std::vector<std::pair<ExpPauliTerm, std::complex<double>>>& H_terms,
     int user_threads = -1) {
     if (user_threads == 1 || user_threads == 0) {
         return expectation_value(phi, psi, H_terms);
@@ -180,7 +180,9 @@ std::complex<double> expectation_value_parallel(
     unsigned int num_threads = (user_threads < 0)
                                ? std::thread::hardware_concurrency()
                                : static_cast<unsigned int>(user_threads);
-    if (num_threads == 0) num_threads = 4;
+    if (num_threads == 0) {
+        num_threads = 4;
+    }
 
     size_t total_terms = H_terms.size();
     size_t chunk_size = (total_terms + num_threads - 1) / num_threads;
