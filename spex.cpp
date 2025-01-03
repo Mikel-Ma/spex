@@ -22,50 +22,15 @@ using State = std::unordered_map<uint64_t, std::complex<double>>;
  * Structure to represent an exponential Pauli term like "X(0)Y(1)Z(2)" and an angle θ.
  */
 struct ExpPauliTerm {
-    std::string pauli_string;
+    std::unordered_map<int, char> pauli_map; 
     double angle;
 
-    // Constructors
-    ExpPauliTerm() : pauli_string(""), angle(0.0) {}
-    ExpPauliTerm(const std::string& p, double a) : pauli_string(p), angle(a) {}
+    ExpPauliTerm() : pauli_map(), angle(0.0) {}
+
+    void set_angle(double new_angle) {
+        angle = new_angle;
+    }
 };
-
-/**
- * Parses a Pauli string like "X(0)X(2)" into a map from qubit indices to Pauli operators.
- *
- * @param pauli_string The Pauli string to parse, e.g., "X(0)Y(1)Z(2)".
- * @return A map from qubit indices to Pauli operators ('I', 'X', 'Y', 'Z').
- *
- * Example:
- *   auto pauli_map = parse_pauli_string("X(0)Y(1)Z(2)");
- *   // pauli_map[0] == 'X', pauli_map[1] == 'Y', pauli_map[2] == 'Z'
- */
-std::unordered_map<int, char> parse_pauli_string(const std::string& pauli_string) {
-    std::unordered_map<int, char> pauli_map;
-    static const std::regex rgx("(I|X|Y|Z)\\((\\d+)\\)");
-    std::smatch match;
-    std::string s = pauli_string;
-
-    if (pauli_string.empty()) {
-        throw std::invalid_argument("Pauli string cannot be empty.");
-    }
-
-    while (std::regex_search(s, match, rgx)) {
-        char op = match[1].str()[0];
-        int qubit = std::stoi(match[2].str());
-        if (qubit < 0) {
-            throw std::invalid_argument("Qubit indices must be non-negative integers.");
-        }
-        pauli_map[qubit] = op;
-        s = match.suffix().str();
-    }
-
-    if (pauli_map.empty() && pauli_string != "I") {
-        throw std::invalid_argument("Invalid Pauli string format: " + pauli_string);
-    }
-
-    return pauli_map;
-}
 
 /**
  * Applies a Pauli operator to a basis state, returning the new basis state and the associated phase factor.
@@ -73,12 +38,6 @@ std::unordered_map<int, char> parse_pauli_string(const std::string& pauli_string
  * @param pauli_map A map from qubit indices to Pauli operators ('I', 'X', 'Y', 'Z').
  * @param basis_state The basis state represented as an unsigned 64-bit integer.
  * @return A pair containing the new basis state and the phase factor (std::complex<double>).
- *
- * Example:
- *   auto pauli_map = parse_pauli_string("X(0)Y(1)");
- *   uint64_t basis_state = 0b01; // |01⟩
- *   auto [new_state, phase] = apply_Pk(pauli_map, basis_state);
- *   // new_state corresponds to the basis state after applying X on qubit 0 and Y on qubit 1
  */
 std::pair<uint64_t, std::complex<double>> apply_Pk(
     const std::unordered_map<int, char>& pauli_map, uint64_t basis_state) {
@@ -140,8 +99,7 @@ std::complex<double> inner_product(const State& psi, const State& phi) {
     for (const auto& [basis_state, coeff_smaller] : *smaller_state) {
         auto it = larger_state->find(basis_state);
         if (it != larger_state->end()) {
-            const std::complex<double>& coeff_larger = it->second;
-            result += std::conj(coeff_smaller) * coeff_larger;
+            result += std::conj(coeff_smaller) * it->second;
         }
     }
 
@@ -158,7 +116,7 @@ std::complex<double> inner_product(const State& psi, const State& phi) {
  */
 std::complex<double> expectation_value(
     const State& phi, const State& psi,
-    const std::vector<std::pair<std::string, double>>& H_terms) {
+    const std::vector<std::pair<ExpPauliTerm, double>>& H_terms) {
     if (psi.empty() || phi.empty()) {
         throw std::invalid_argument("Quantum states cannot be empty.");
     }
@@ -170,18 +128,16 @@ std::complex<double> expectation_value(
     std::complex<double> result = 0.0;
     State psi_k;
 
-    for (const auto& [pauli_string, coeff] : H_terms) {
+    for (const auto& [term, coeff] : H_terms) {
         if (coeff == 0.0) {
             continue; // Skip zero coefficients
         }
-
-        // Parse the Pauli string outside the loop
-        const auto pauli_map = parse_pauli_string(pauli_string);
+        
         psi_k.clear();
 
         // Apply Pk to ψ to obtain ψk
         for (const auto& [basis_state, amplitude] : psi) {
-            auto [new_basis_state, phase] = apply_Pk(pauli_map, basis_state);
+            auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state);
             psi_k[new_basis_state] += phase * amplitude;
         }
         // Compute ⟨φ|ψk⟩
@@ -204,7 +160,12 @@ std::complex<double> expectation_value(
  */
 std::complex<double> expectation_value_parallel(
     const State& phi, const State& psi,
-    const std::vector<std::pair<std::string, double>>& H_terms) {
+    const std::vector<std::pair<ExpPauliTerm, double>>& H_terms,
+    int user_threads = -1) {
+    if (user_threads == 1 || user_threads == 0) {
+        return expectation_value(phi, psi, H_terms);
+    }
+
     if (psi.empty() || phi.empty()) {
         throw std::invalid_argument("Quantum states cannot be empty.");
     }
@@ -216,7 +177,9 @@ std::complex<double> expectation_value_parallel(
     std::complex<double> result = 0.0;
 
     // Determine the number of threads to use
-    unsigned int num_threads = std::thread::hardware_concurrency();
+    unsigned int num_threads = (user_threads < 0)
+                               ? std::thread::hardware_concurrency()
+                               : static_cast<unsigned int>(user_threads);
     if (num_threads == 0) num_threads = 4;
 
     size_t total_terms = H_terms.size();
@@ -236,13 +199,11 @@ std::complex<double> expectation_value_parallel(
                 continue; // Skip zero coefficients
             }
 
-            // Parse the Pauli string once per term
-            const auto pauli_map = parse_pauli_string(pauli_string);
             psi_k.clear();
 
             // Apply Pk to ψ to obtain ψk
             for (const auto& [basis_state, amplitude] : psi) {
-                auto [new_basis_state, phase] = apply_Pk(pauli_map, basis_state);
+                auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state);
                 psi_k[new_basis_state] += phase * amplitude;
             }
 
@@ -285,11 +246,12 @@ std::complex<double> expectation_value_parallel(
  * @param state The input quantum state |ψ⟩, represented as a State.
  * @return The new quantum state after applying e^{-iθP}|ψ⟩.
  */
-State apply_exp_pauli(const std::string& pauli_string, double theta, const State& state) {
+State apply_exp_pauli(const ExpPauliTerm& term, const State& state) {
     if (state.empty()) {
         throw std::invalid_argument("Input quantum state cannot be empty.");
     }
 
+    double theta = term.angle;
     if (theta == 0.0) {
         return state; // No change if theta is zero
     }
@@ -297,11 +259,10 @@ State apply_exp_pauli(const std::string& pauli_string, double theta, const State
     State new_state;
     const double cos_theta = std::cos(theta / 2.0);
     const double sin_theta = std::sin(theta / 2.0);
-    const auto pauli_map = parse_pauli_string(pauli_string);
 
     // Compute P|ψ⟩ and update new_state
     for (const auto& [basis_state, amplitude] : state) {
-        auto [new_basis_state, phase] = apply_Pk(pauli_map, basis_state);
+        auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state);
 
         // Update new_state
         new_state[basis_state] += cos_theta * amplitude;
@@ -325,10 +286,7 @@ State apply_U(const std::vector<ExpPauliTerm>& U_terms, const State& initial_sta
 
     State state = initial_state;
     for (const auto& term : U_terms) {
-        if (term.pauli_string.empty()) {
-            throw std::invalid_argument("Pauli string in U_terms cannot be empty.");
-        }
-        state = apply_exp_pauli(term.pauli_string, term.angle, state);
+        state = apply_exp_pauli(term, state);
     }
     return state;
 }
@@ -381,25 +339,15 @@ PYBIND11_MODULE(spex_tequila, p) {
     // Expose ExpPauliTerm structure
     py::class_<ExpPauliTerm>(p, "ExpPauliTerm")
         .def(py::init<>())
-        .def(py::init<const std::string&, double>(),
-             py::arg("pauli_string"), py::arg("angle"))
-        .def_readwrite("pauli_string", &ExpPauliTerm::pauli_string)
+        .def_readwrite("pauli_map", &ExpPauliTerm::pauli_map)
         .def_readwrite("angle", &ExpPauliTerm::angle);
-
- // Expose parse_pauli_string function
-    p.def("parse_pauli_string", &parse_pauli_string,
-          "Parse a Pauli string into a map from qubit indices to Pauli operators",
-          py::arg("pauli_string"));
-
+        .def("set_angle", &ExpPauliTerm::set_angle,
+             "Set the angle of this ExpPauliTerm");
 
     // Expose apply_Pk function
-    p.def("apply_Pk",
-          [](const std::string& pauli_string, uint64_t basis_state) {
-              const auto pauli_map = parse_pauli_string(pauli_string);
-              return apply_Pk(pauli_map, basis_state);
-          },
+    p.def("apply_Pk", &apply_Pk,
           "Apply a Pauli operator to a basis state",
-          py::arg("pauli_string"), py::arg("basis_state"));
+          py::arg("pauli_map"), py::arg("basis_state"));
 
     // Expose inner_product function
     p.def("inner_product", &inner_product,
@@ -414,8 +362,15 @@ PYBIND11_MODULE(spex_tequila, p) {
     // Expose expectation_value_parallel function
     p.def("expectation_value_parallel", &expectation_value_parallel,
           "Compute the expectation value ⟨φ|H|ψ⟩ (parallelized)",
-          py::arg("phi"), py::arg("psi"), py::arg("H_terms"),
-          py::call_guard<py::gil_scoped_release>());
+          py::arg("phi"), py::arg("psi"), py::arg("H_terms"), py::arg("num_threads") = -1,
+          py::call_guard<py::gil_scoped_release>()
+          R"doc(
+            Compute the expectation value <phi|H|psi> in parallel if num_threads>0.
+            - num_threads < 0 => uses hardware concurrency
+            - num_threads == 0/1 => calls the non-parallel version
+            - num_threads > 1 => uses that many threads
+            )doc"
+    );
 
     // Expose apply_exp_pauli function
     p.def("apply_exp_pauli", &apply_exp_pauli,
