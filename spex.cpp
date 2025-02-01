@@ -7,6 +7,7 @@
 #include <regex>
 #include <thread>
 #include <stdexcept>
+#include <algorithm>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -180,7 +181,7 @@ std::complex<double> expectation_value_parallel(
 
     // Determine the number of threads to use
     unsigned int num_threads = (user_threads < 0)
-                               ? std::thread::hardware_concurrency()
+                               ? (std::thread::hardware_concurrency() - 2)
                                : static_cast<unsigned int>(user_threads);
     if (num_threads == 0) {
         num_threads = 4;
@@ -191,6 +192,8 @@ std::complex<double> expectation_value_parallel(
 
     // Vector to hold partial results
     std::vector<std::complex<double>> partial_results(num_threads, 0.0);
+    std::vector<std::thread> threads;
+    threads.reserve(num_threads);
 
     // Worker function for each thread
     auto worker = [&](size_t start_idx, size_t end_idx, unsigned int thread_id) {
@@ -199,10 +202,7 @@ std::complex<double> expectation_value_parallel(
 
         for (size_t idx = start_idx; idx < end_idx; ++idx) {
             const auto& [term, coeff] = H_terms[idx];
-            if (coeff == 0.0) {
-                continue; // Skip zero coefficients
-            }
-
+            if (coeff == 0.0) continue;
             psi_k.clear();
 
             // Apply Pk to ψ to obtain ψk
@@ -215,11 +215,9 @@ std::complex<double> expectation_value_parallel(
             local_result += coeff * inner_product(phi, psi_k);
         }
         partial_results[thread_id] = local_result;
-        State().swap(psi_k);
     };
 
     // Launch threads
-    std::vector<std::thread> threads;
     for (unsigned int t = 0; t < num_threads; ++t) {
         size_t start_idx = t * chunk_size;
         size_t end_idx = std::min(start_idx + chunk_size, total_terms);
@@ -254,16 +252,13 @@ State apply_exp_pauli(const ExpPauliTerm& term, const State& state, double thres
     }
 
     double theta = term.angle;
-    if (theta == 0.0) {
-        return state; // No change if theta is zero
-    }
+    if (theta == 0.0) return state; // No change if theta is zero
 
     State new_state;
     new_state.reserve(state.size() * 2);
     
     const double cos_theta = std::cos(theta / 2.0);
     const double sin_theta = std::sin(theta / 2.0);
-
     bool use_threshold = (threshold >= 0.0);
 
     // Compute P|ψ⟩ and update new_state
@@ -271,24 +266,30 @@ State apply_exp_pauli(const ExpPauliTerm& term, const State& state, double thres
         auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state);
 
         const auto amp1 = cos_theta * amplitude;
-        if (std::abs(amp1) >= threshold) {
-            new_state[basis_state] += amp1;
-        }
-
         const auto amp2 = (-std::complex<double>(0, sin_theta)) * phase * amplitude;
-        if (std::abs(amp2) >= threshold) {
+
+        if (use_threshold) {
+            if (std::abs(amp1) >= threshold) {
+                new_state[basis_state] += amp1;
+            }
+            if (std::abs(amp2) >= threshold) {
+                new_state[new_basis_state] += amp2;
+            }
+        } else {
+            new_state[basis_state] += amp1;
             new_state[new_basis_state] += amp2;
         }
     }
 
-    for (auto it = new_state.begin(); it != new_state.end();) {
-        if (std::abs(it->second) < threshold) {
-            it = new_state.erase(it);
-        } else {
-            ++it;
+    if (use_threshold) {
+        for (auto it = new_state.begin(); it != new_state.end(); ) {
+            if (std::abs(it->second) < threshold) {
+                it = new_state.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
-
     return new_state;
 }
 
