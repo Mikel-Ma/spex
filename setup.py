@@ -13,7 +13,7 @@ ext_modules = [
 
 setup(
     name="spex-tequila",
-    version="0.0.12",
+    version="1.0.0",
     author="Michael Lang",
     author_email="lang-michi@t-online.de",
     url="https://git.rz.uni-augsburg.de/qalg-a/spex",
