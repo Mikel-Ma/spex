@@ -1,17 +1,19 @@
 from setuptools import setup, find_packages
 from pybind11.setup_helpers import Pybind11Extension, build_ext
+import os
 
 ext_modules = [
     Pybind11Extension(
         "spex_tequila",
         ["spex.cpp"],
         cxx_std=17,
+        include_dirs=[os.path.abspath("include")]
     ),
 ]
 
 setup(
     name="spex-tequila",
-    version="0.0.11",
+    version="0.0.12",
     author="Michael Lang",
     author_email="lang-michi@t-online.de",
     url="https://git.rz.uni-augsburg.de/qalg-a/spex",
@@ -32,4 +34,5 @@ setup(
         "License :: OSI Approved :: MIT License",
     ],
     packages=find_packages(),
+    include_package_data=True,
 )

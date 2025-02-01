@@ -12,17 +12,19 @@
 #include <pybind11/stl.h>
 #include <pybind11/complex.h>
 
+#include "include/unordered_dense.h"
+
 // Namespace for Pybind11
 namespace py = pybind11;
 
 // Type definition for the quantum state
-using State = std::unordered_map<uint64_t, std::complex<double>>;
+using State = ankerl::unordered_dense::map<uint64_t, std::complex<double>>;
 
 /**
  * Structure to represent an exponential Pauli term like "X(0)Y(1)Z(2)" and an angle θ.
  */
 struct ExpPauliTerm {
-    std::unordered_map<int, char> pauli_map; 
+    ankerl::unordered_dense::map<int, char> pauli_map; 
     double angle;
 
     ExpPauliTerm() : pauli_map(), angle(0.0) {}
@@ -40,7 +42,7 @@ struct ExpPauliTerm {
  * @return A pair containing the new basis state and the phase factor (std::complex<double>).
  */
 std::pair<uint64_t, std::complex<double>> apply_Pk(
-    const std::unordered_map<int, char>& pauli_map, uint64_t basis_state) {
+    const ankerl::unordered_dense::map<int, char>& pauli_map, uint64_t basis_state) {
     uint64_t new_basis_state = basis_state;
     std::complex<double> phase = 1.0;
 
@@ -209,13 +211,11 @@ std::complex<double> expectation_value_parallel(
                 psi_k[new_basis_state] += phase * amplitude;
             }
 
-            // Compute ⟨φ|ψk⟩
-            std::complex<double> inner_prod = inner_product(phi, psi_k);
-
             // Accumulate c_k * ⟨φ|ψk⟩
-            local_result += coeff * inner_prod;
+            local_result += coeff * inner_product(phi, psi_k);
         }
         partial_results[thread_id] = local_result;
+        State().swap(psi_k);
     };
 
     // Launch threads
@@ -248,7 +248,7 @@ std::complex<double> expectation_value_parallel(
  * @param state The input quantum state |ψ⟩, represented as a State.
  * @return The new quantum state after applying e^{-iθP}|ψ⟩.
  */
-State apply_exp_pauli(const ExpPauliTerm& term, const State& state) {
+State apply_exp_pauli(const ExpPauliTerm& term, const State& state, double threshold) {
     if (state.empty()) {
         throw std::invalid_argument("Input quantum state cannot be empty.");
     }
@@ -257,18 +257,36 @@ State apply_exp_pauli(const ExpPauliTerm& term, const State& state) {
     if (theta == 0.0) {
         return state; // No change if theta is zero
     }
-    
+
     State new_state;
+    new_state.reserve(state.size() * 2);
+    
     const double cos_theta = std::cos(theta / 2.0);
     const double sin_theta = std::sin(theta / 2.0);
+
+    bool use_threshold = (threshold >= 0.0);
 
     // Compute P|ψ⟩ and update new_state
     for (const auto& [basis_state, amplitude] : state) {
         auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state);
 
-        // Update new_state
-        new_state[basis_state] += cos_theta * amplitude;
-        new_state[new_basis_state] += (-std::complex<double>(0, sin_theta)) * phase * amplitude;
+        const auto amp1 = cos_theta * amplitude;
+        if (std::abs(amp1) >= threshold) {
+            new_state[basis_state] += amp1;
+        }
+
+        const auto amp2 = (-std::complex<double>(0, sin_theta)) * phase * amplitude;
+        if (std::abs(amp2) >= threshold) {
+            new_state[new_basis_state] += amp2;
+        }
+    }
+
+    for (auto it = new_state.begin(); it != new_state.end();) {
+        if (std::abs(it->second) < threshold) {
+            it = new_state.erase(it);
+        } else {
+            ++it;
+        }
     }
 
     return new_state;
@@ -281,14 +299,14 @@ State apply_exp_pauli(const ExpPauliTerm& term, const State& state) {
  * @param initial_state The initial quantum state, represented as a State.
  * @return The final quantum state after applying all exponential operators.
  */
-State apply_U(const std::vector<ExpPauliTerm>& U_terms, const State& initial_state) {
+State apply_U(const std::vector<ExpPauliTerm>& U_terms, const State& initial_state, double threshold) {
     if (initial_state.empty()) {
         throw std::invalid_argument("Initial quantum state cannot be empty.");
     }
 
     State state = initial_state;
     for (const auto& term : U_terms) {
-        state = apply_exp_pauli(term, state);
+        state = apply_exp_pauli(term, state, threshold);
     }
     return state;
 }
@@ -334,6 +352,17 @@ std::string state_to_string(const State& state, int num_qubits) {
     return s;
 }
 
+
+namespace pybind11 {
+namespace detail {
+template <class Key, class T, class Hash, class KeyEqual, class Allocator>
+struct type_caster<ankerl::unordered_dense::map<Key, T, Hash, KeyEqual, Allocator>>
+    : map_caster<ankerl::unordered_dense::map<Key, T, Hash, KeyEqual, Allocator>, Key, T> 
+{};
+
+} 
+} 
+
 // Bindings for Pybind11
 PYBIND11_MODULE(spex_tequila, p) {
     p.doc() = "Expectation value computation module on sparse pauli states for tequila, implemented in C++ using Pybind11";
@@ -371,12 +400,12 @@ PYBIND11_MODULE(spex_tequila, p) {
     // Expose apply_exp_pauli function
     p.def("apply_exp_pauli", &apply_exp_pauli,
           "Apply e^{-iθP} to a quantum state",
-          py::arg("term"), py::arg("state"));
+          py::arg("term"), py::arg("state"), py::arg("threshold"));
 
     // Expose apply_U function
     p.def("apply_U", &apply_U,
           "Apply a sequence of exponential Pauli operators to a quantum state",
-          py::arg("U_terms"), py::arg("initial_state"));
+          py::arg("U_terms"), py::arg("initial_state"), py::arg("threshold"));
 
     // Expose initialize_zero_state function
     p.def("initialize_zero_state", &initialize_zero_state,
