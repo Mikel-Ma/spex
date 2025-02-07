@@ -43,16 +43,20 @@ struct ExpPauliTerm {
  * @return A pair containing the new basis state and the phase factor (std::complex<double>).
  */
 std::pair<uint64_t, std::complex<double>> apply_Pk(
-    const ankerl::unordered_dense::map<int, char>& pauli_map, uint64_t basis_state) {
+    const ankerl::unordered_dense::map<int, char>& pauli_map,
+    uint64_t basis_state,
+    int num_qubits) {
+
     uint64_t new_basis_state = basis_state;
     std::complex<double> phase = 1.0;
 
     for (const auto& [qubit, p] : pauli_map) {
-        if (qubit < 0 || qubit >= 64) {
-            throw std::out_of_range("Qubit index out of valid range (0-63): " + std::to_string(qubit));
+        if (qubit < 0 || qubit >= num_qubits) {
+            throw std::out_of_range("Qubit index out of valid range (0-" + std::to_string(num_qubits - 1) + "): " + std::to_string(qubit));
         }
 
-        bool bit = (basis_state >> qubit) & 1ULL;
+        int bit_index = num_qubits - 1 - qubit;
+        bool bit = (basis_state >> bit_index) & 1ULL;
 
         switch (p) {
             case 'I':
@@ -60,11 +64,11 @@ std::pair<uint64_t, std::complex<double>> apply_Pk(
                 break;
             case 'X':
                 // Flip the qubit
-                new_basis_state ^= (1ULL << qubit);
+                new_basis_state ^= (1ULL << bit_index);
                 break;
             case 'Y':
                 // Flip the qubit and add phase factor
-                new_basis_state ^= (1ULL << qubit);
+                new_basis_state ^= (1ULL << bit_index);
                 phase *= bit ? std::complex<double>(0, -1) : std::complex<double>(0, 1);
                 break;
             case 'Z':
@@ -119,7 +123,9 @@ std::complex<double> inner_product(const State& psi, const State& phi) {
  */
 std::complex<double> expectation_value(
     const State& phi, const State& psi,
-    const std::vector<std::pair<ExpPauliTerm, std::complex<double>>>& H_terms) {
+    const std::vector<std::pair<ExpPauliTerm, 
+    std::complex<double>>>& H_terms,
+    int num_qubits) {
     if (psi.empty() || phi.empty()) {
         throw std::invalid_argument("Quantum states cannot be empty.");
     }
@@ -140,13 +146,12 @@ std::complex<double> expectation_value(
 
         // Apply Pk to ψ to obtain ψk
         for (const auto& [basis_state, amplitude] : psi) {
-            auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state);
+            auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state, num_qubits);
             psi_k[new_basis_state] += phase * amplitude;
         }
-        // Compute ⟨φ|ψk⟩
-        std::complex<double> inner_prod = inner_product(phi, psi_k);
-        // Accumulate c_k * ⟨φ|ψk⟩
-        result += coeff * inner_prod;
+
+        // Compute ⟨φ|ψk⟩ and accumulate c_k * ⟨φ|ψk⟩
+        result += coeff * inner_product(phi, psi_k);
     }
     return result;
 }
@@ -163,10 +168,12 @@ std::complex<double> expectation_value(
  */
 std::complex<double> expectation_value_parallel(
     const State& phi, const State& psi,
-    const std::vector<std::pair<ExpPauliTerm, std::complex<double>>>& H_terms,
+    const std::vector<std::pair<ExpPauliTerm, 
+    std::complex<double>>>& H_terms,
+    int num_qubits,
     int user_threads = -1) {
     if (user_threads == 1 || user_threads == 0) {
-        return expectation_value(phi, psi, H_terms);
+        return expectation_value(phi, psi, H_terms, num_qubits);
     }
 
     if (psi.empty() || phi.empty()) {
@@ -207,7 +214,7 @@ std::complex<double> expectation_value_parallel(
 
             // Apply Pk to ψ to obtain ψk
             for (const auto& [basis_state, amplitude] : psi) {
-                auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state);
+                auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state, num_qubits);
                 psi_k[new_basis_state] += phase * amplitude;
             }
 
@@ -246,7 +253,7 @@ std::complex<double> expectation_value_parallel(
  * @param state The input quantum state |ψ⟩, represented as a State.
  * @return The new quantum state after applying e^{-iθP}|ψ⟩.
  */
-State apply_exp_pauli(const ExpPauliTerm& term, const State& state, double threshold) {
+State apply_exp_pauli(const ExpPauliTerm& term, const State& state, double threshold, int num_qubits) {
     if (state.empty()) {
         throw std::invalid_argument("Input quantum state cannot be empty.");
     }
@@ -263,7 +270,7 @@ State apply_exp_pauli(const ExpPauliTerm& term, const State& state, double thres
 
     // Compute P|ψ⟩ and update new_state
     for (const auto& [basis_state, amplitude] : state) {
-        auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state);
+        auto [new_basis_state, phase] = apply_Pk(term.pauli_map, basis_state, num_qubits);
 
         const auto amp1 = cos_theta * amplitude;
         const auto amp2 = (-std::complex<double>(0, sin_theta)) * phase * amplitude;
@@ -300,14 +307,14 @@ State apply_exp_pauli(const ExpPauliTerm& term, const State& state, double thres
  * @param initial_state The initial quantum state, represented as a State.
  * @return The final quantum state after applying all exponential operators.
  */
-State apply_U(const std::vector<ExpPauliTerm>& U_terms, const State& initial_state, double threshold) {
+State apply_U(const std::vector<ExpPauliTerm>& U_terms, const State& initial_state, double threshold, int num_qubits) {
     if (initial_state.empty()) {
         throw std::invalid_argument("Initial quantum state cannot be empty.");
     }
 
     State state = initial_state;
     for (const auto& term : U_terms) {
-        state = apply_exp_pauli(term, state, threshold);
+        state = apply_exp_pauli(term, state, threshold, num_qubits);
     }
     return state;
 }
@@ -379,7 +386,7 @@ PYBIND11_MODULE(spex_tequila, p) {
     // Expose apply_Pk function
     p.def("apply_Pk", &apply_Pk,
           "Apply a Pauli operator to a basis state",
-          py::arg("pauli_map"), py::arg("basis_state"));
+          py::arg("pauli_map"), py::arg("basis_state"), py::arg("num_qubits"));
 
     // Expose inner_product function
     p.def("inner_product", &inner_product,
@@ -389,24 +396,24 @@ PYBIND11_MODULE(spex_tequila, p) {
     // Expose expectation_value function
     p.def("expectation_value", &expectation_value,
           "Compute the expectation value ⟨φ|H|ψ⟩",
-          py::arg("phi"), py::arg("psi"), py::arg("H_terms"));
+          py::arg("phi"), py::arg("psi"), py::arg("H_terms"), py::arg("num_qubits"));
 
     // Expose expectation_value_parallel function
     p.def("expectation_value_parallel", &expectation_value_parallel,
           "Compute the expectation value ⟨φ|H|ψ⟩ (parallelized)",
-          py::arg("phi"), py::arg("psi"), py::arg("H_terms"), py::arg("num_threads") = -1,
+          py::arg("phi"), py::arg("psi"), py::arg("H_terms"), py::arg("num_qubits"), py::arg("num_threads") = -1,
           py::call_guard<py::gil_scoped_release>()
     );
 
     // Expose apply_exp_pauli function
     p.def("apply_exp_pauli", &apply_exp_pauli,
           "Apply e^{-iθP} to a quantum state",
-          py::arg("term"), py::arg("state"), py::arg("threshold"));
+          py::arg("term"), py::arg("state"), py::arg("threshold"), py::arg("num_qubits"));
 
     // Expose apply_U function
     p.def("apply_U", &apply_U,
           "Apply a sequence of exponential Pauli operators to a quantum state",
-          py::arg("U_terms"), py::arg("initial_state"), py::arg("threshold"));
+          py::arg("U_terms"), py::arg("initial_state"), py::arg("threshold"), py::arg("num_qubits"));
 
     // Expose initialize_zero_state function
     p.def("initialize_zero_state", &initialize_zero_state,
